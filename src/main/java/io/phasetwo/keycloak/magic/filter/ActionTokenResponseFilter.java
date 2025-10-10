@@ -82,7 +82,7 @@ public class ActionTokenResponseFilter implements ContainerResponseFilter {
 
         String separator = baseUri.contains("?") ? "&" : "?";
         
-        return String.format("%s%skeycloak_user_id=%s&redirect_uri=%s&error_code=%d",
+        return String.format("%s%skc_user_id=%s&redirect_uri=%s&error_code=%d",
             baseUri, separator, encodedUserId, encodedRedirectUri, statusCode);
     }
 }
