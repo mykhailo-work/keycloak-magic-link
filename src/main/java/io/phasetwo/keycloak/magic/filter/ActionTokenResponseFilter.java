@@ -14,7 +14,6 @@ import jakarta.ws.rs.ext.Provider;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.Context;
 import org.keycloak.jose.jws.JWSInput;
-import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.RealmModel;
 import org.keycloak.models.UserModel;
 
@@ -31,9 +30,6 @@ import java.net.URI;
 public class ActionTokenResponseFilter implements ContainerResponseFilter {
 
     private static final String PATH_SEGMENT = "login-actions/action-token";
-
-    @Context
-    private KeycloakSession session;
 
     @Override
     public void filter(ContainerRequestContext requestContext, ContainerResponseContext responseContext) throws IOException {
@@ -69,11 +65,7 @@ public class ActionTokenResponseFilter implements ContainerResponseFilter {
             return;
         }
 
-        RealmModel realm = session.getContext().getRealm();
-        UserModel user = session.users().getUserById(realm, userId);
-        String userEmail = (user != null) ? user.getEmail() : "unknown";
-
-        String redirectWithParams = addQueryParams(redirectUri, userEmail, redirectUri, responseContext.getStatus());
+        String redirectWithParams = addQueryParams(redirectUri, userId, redirectUri, responseContext.getStatus());
 
         log.infof("Redirecting user to %s", redirectWithParams);
 
@@ -84,14 +76,13 @@ public class ActionTokenResponseFilter implements ContainerResponseFilter {
         responseContext.setEntity(null);
     }
 
-    private String addQueryParams(String baseUri, String email, String redirectUri, int statusCode) {
-        String encodedEmail = URLEncoder.encode(email, StandardCharsets.UTF_8);
+    private String addQueryParams(String baseUri, String userId, String redirectUri, int statusCode) {
+        String encodedUserId = URLEncoder.encode(userId, StandardCharsets.UTF_8);
         String encodedRedirectUri = URLEncoder.encode(redirectUri, StandardCharsets.UTF_8);
 
-        if (baseUri.contains("?")) {
-            return baseUri + "&email=" + encodedEmail + "&redirect_uri=" + encodedRedirectUri + "&error_code=" + statusCode;
-        } else {
-            return baseUri + "?email=" + encodedEmail + "&redirect_uri=" + encodedRedirectUri + "&error_code=" + statusCode;
-        }
+        String separator = baseUri.contains("?") ? "&" : "?";
+        
+        return String.format("%s%skeycloak_user_id=%s&redirect_uri=%s&error_code=%d",
+            baseUri, separator, encodedUserId, encodedRedirectUri, statusCode);
     }
 }
