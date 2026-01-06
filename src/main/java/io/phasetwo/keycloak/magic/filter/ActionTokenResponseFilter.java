@@ -20,6 +20,10 @@ import org.keycloak.models.UserModel;
 import java.io.IOException;
 import java.net.URI;
 
+import org.keycloak.models.KeycloakSession;
+import org.keycloak.models.RealmModel;
+import org.keycloak.models.UserSessionModel;
+
 /**
  * Filter to intercept responses for /login-actions/action-token.
  * If the response has an error status code (4xx or 5xx) — redirects to the redirect_uri from the token.
@@ -53,27 +57,52 @@ public class ActionTokenResponseFilter implements ContainerResponseFilter {
             JWSInput input = new JWSInput(tokenString);
             MagicLinkActionToken token = input.readJsonContent(MagicLinkActionToken.class);
 
-            redirectToUri(token.getRedirectUri(), token.getUserId(), responseContext);
+            redirectToUri(token.getRedirectUri(), token.getUserId(), responseContext, requestContext);
         } catch (Exception e) {
             log.error("Failed to process magic link token", e);
         }
     }
 
-    private void redirectToUri(String redirectUri, String userId, ContainerResponseContext responseContext) {
-        if (redirectUri == null || redirectUri.isBlank()) {
+    private void redirectToUri(
+            String redirectUri,
+            String userId,
+            ContainerResponseContext responseContext,
+            ContainerRequestContext requestContext
+    ) {
+        String baseUri = redirectUri;
+
+        if (baseUri == null || baseUri.isBlank()) {
             log.warnf("Redirect URI is missing for user %s", userId);
             return;
         }
 
-        String redirectWithParams = addQueryParams(redirectUri, userId, redirectUri, responseContext.getStatus());
+        Integer statusCode = responseContext.getStatus();
+        Object entityObj = responseContext.getEntity();
+        String entity = entityObj != null ? entityObj.toString() : "";
 
-        log.infof("Redirecting user to %s", redirectWithParams);
+        if (entity.contains("You are already authenticated as different user")) {
+            log.info("Logging out conflicting user");
 
-        // Perform a 302 redirect
-        responseContext.setStatusInfo(Response.Status.FOUND);
-        responseContext.getHeaders().clear();
-        responseContext.getHeaders().putSingle("Location", URI.create(redirectWithParams).toString());
-        responseContext.setEntity(null);
+            String magicLink = requestContext.getUriInfo().getRequestUri().toString();
+
+           // Clear Keycloak session cookies to force logout
+            clearAuthCookies(responseContext, requestContext);
+
+            // Perform a 302 redirect
+            responseContext.setStatusInfo(Response.Status.FOUND);
+            responseContext.getHeaders().add("Location", URI.create(magicLink).toString());
+            responseContext.setEntity(null);
+        } else {
+            String redirectWithParams = addQueryParams(baseUri, userId, redirectUri, statusCode);
+
+            log.infof("Redirecting user to %s", redirectWithParams);
+
+            // Perform a 302 redirect
+            responseContext.setStatusInfo(Response.Status.FOUND);
+            responseContext.getHeaders().clear();
+            responseContext.getHeaders().putSingle("Location", URI.create(redirectWithParams).toString());
+            responseContext.setEntity(null);
+        }
     }
 
     private String addQueryParams(String baseUri, String userId, String redirectUri, int statusCode) {
@@ -84,5 +113,29 @@ public class ActionTokenResponseFilter implements ContainerResponseFilter {
         
         return String.format("%s%skc_user_id=%s&redirect_uri=%s&error_code=%d",
             baseUri, separator, encodedUserId, encodedRedirectUri, statusCode);
+    }
+
+    @Context
+    private KeycloakSession session;
+
+    private void clearAuthCookies(ContainerResponseContext responseContext, ContainerRequestContext requestContext) {
+            RealmModel realm = session.getContext().getRealm();
+            String realmName = realm.getName();
+            String path = "/realms/" + realmName + "/";
+
+            log.infof("Clearing auth cookies for realm %s at path %s", realmName, path);
+
+            responseContext.getHeaders().add(
+                    "Set-Cookie",
+                    "AUTH_SESSION_ID=; Path=" + path + "; Max-Age=0; HttpOnly"
+            );
+            responseContext.getHeaders().add(
+                    "Set-Cookie",
+                    "KEYCLOAK_IDENTITY=; Path=" + path + "; Max-Age=0; HttpOnly"
+            );
+            responseContext.getHeaders().add(
+                    "Set-Cookie",
+                    "KEYCLOAK_SESSION=; Path=" + path + "; Max-Age=0; HttpOnly"
+            );
     }
 }
