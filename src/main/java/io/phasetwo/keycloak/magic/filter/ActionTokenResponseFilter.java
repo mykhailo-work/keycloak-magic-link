@@ -121,21 +121,21 @@ public class ActionTokenResponseFilter implements ContainerResponseFilter {
     private void clearAuthCookies(ContainerResponseContext responseContext, ContainerRequestContext requestContext) {
             RealmModel realm = session.getContext().getRealm();
             String realmName = realm.getName();
-            String path = "/realms/" + realmName + "/";
+            String path = "/realms/%s/".formatted(realmName);
 
             log.infof("Clearing auth cookies for realm %s at path %s", realmName, path);
 
             responseContext.getHeaders().add(
                     "Set-Cookie",
-                    "AUTH_SESSION_ID=; Path=" + path + "; Max-Age=0; HttpOnly"
+                    "AUTH_SESSION_ID=; Path=%s; Max-Age=0; HttpOnly".formatted(path)
             );
             responseContext.getHeaders().add(
                     "Set-Cookie",
-                    "KEYCLOAK_IDENTITY=; Path=" + path + "; Max-Age=0; HttpOnly"
+                    "KEYCLOAK_IDENTITY=; Path=%s; Max-Age=0; HttpOnly".formatted(path)
             );
             responseContext.getHeaders().add(
                     "Set-Cookie",
-                    "KEYCLOAK_SESSION=; Path=" + path + "; Max-Age=0; HttpOnly"
+                    "KEYCLOAK_SESSION=; Path=%s; Max-Age=0; HttpOnly".formatted(path)
             );
     }
 }
